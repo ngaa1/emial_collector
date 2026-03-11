@@ -100,44 +100,150 @@ def save_emails_to_file(emails, output_file):
     except Exception as e:
         print(f"保存文件时出错：{str(e)}")
 
-def main():
-    parser = argparse.ArgumentParser(description="Outlook邮件读取工具")
-    parser.add_argument("--folder", default="Inbox", help="指定文件夹名称，默认为Inbox")
-    parser.add_argument("--unread", action="store_true", help="只读取未读邮件")
-    parser.add_argument("--all", action="store_true", help="读取所有邮件，包括已读")
-    parser.add_argument("--hours", type=int, help="读取最近N小时的邮件")
-    parser.add_argument("--days", type=int, help="读取最近N天的邮件")
-    parser.add_argument("--max", type=int, default=50, help="最大邮件数量，默认50")
-    parser.add_argument("--output", help="将结果保存到文件")
+def get_user_choice(prompt, options, default=None):
+    """获取用户选择"""
+    print(prompt)
+    for i, option in enumerate(options, 1):
+        print(f"{i}. {option}")
+    while True:
+        default_text = f"，默认 {default}" if default else ""
+        choice = input(f"请选择 (1-{len(options)}){default_text}: ").strip()
+        if not choice and default:
+            return default
+        try:
+            choice_idx = int(choice) - 1
+            if 0 <= choice_idx < len(options):
+                return options[choice_idx]
+            print(f"请输入有效的选项 (1-{len(options)})")
+        except ValueError:
+            print("请输入数字")
+
+def get_user_input(prompt, default=None, is_int=False):
+    """获取用户输入"""
+    while True:
+        default_text = f"，默认 {default}" if default else ""
+        value = input(f"{prompt}{default_text}: ").strip()
+        if not value and default:
+            return default
+        if is_int:
+            try:
+                return int(value)
+            except ValueError:
+                print("请输入数字")
+        else:
+            return value
+
+def interactive_mode():
+    """交互式模式"""
+    print("================================")
+    print("Outlook邮件读取工具 - 交互式模式")
+    print("================================")
     
-    args = parser.parse_args()
+    # 选择读取模式
+    read_mode = get_user_choice(
+        "请选择读取模式:",
+        ["只读取未读邮件", "读取所有邮件"],
+        "只读取未读邮件"
+    )
+    read_unread_only = read_mode == "只读取未读邮件"
     
-    # 确定是否只读取未读邮件
-    read_unread_only = args.unread
-    if args.all:
-        read_unread_only = False
+    # 选择文件夹
+    folder = get_user_input(
+        "请输入要读取的文件夹名称",
+        "Inbox"
+    )
     
-    # 确定时间筛选条件
+    # 选择时间范围
+    time_option = get_user_choice(
+        "请选择时间范围:",
+        ["不限制时间", "最近几小时", "最近几天"],
+        "不限制时间"
+    )
+    
     since_datetime = None
-    if args.hours:
-        since_datetime = datetime.now() - timedelta(hours=args.hours)
-    elif args.days:
-        since_datetime = datetime.now() - timedelta(days=args.days)
+    if time_option == "最近几小时":
+        hours = get_user_input("请输入小时数", 24, is_int=True)
+        since_datetime = datetime.now() - timedelta(hours=hours)
+    elif time_option == "最近几天":
+        days = get_user_input("请输入天数", 7, is_int=True)
+        since_datetime = datetime.now() - timedelta(days=days)
+    
+    # 最大邮件数量
+    max_emails = get_user_input("请输入最大邮件数量", 50, is_int=True)
+    
+    # 是否保存到文件
+    save_option = get_user_choice(
+        "是否保存结果到文件:",
+        ["是", "否"],
+        "否"
+    )
+    output_file = None
+    if save_option == "是":
+        default_file = f"emails_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        output_file = get_user_input("请输入保存文件名", default_file)
+    
+    return {
+        "folder": folder,
+        "read_unread_only": read_unread_only,
+        "since_datetime": since_datetime,
+        "max_emails": max_emails,
+        "output": output_file
+    }
+
+def main():
+    import sys
+    
+    # 检查是否有命令行参数
+    if len(sys.argv) > 1:
+        # 使用命令行参数模式
+        parser = argparse.ArgumentParser(description="Outlook邮件读取工具")
+        parser.add_argument("--folder", default="Inbox", help="指定文件夹名称，默认为Inbox")
+        parser.add_argument("--unread", action="store_true", help="只读取未读邮件")
+        parser.add_argument("--all", action="store_true", help="读取所有邮件，包括已读")
+        parser.add_argument("--hours", type=int, help="读取最近N小时的邮件")
+        parser.add_argument("--days", type=int, help="读取最近N天的邮件")
+        parser.add_argument("--max", type=int, default=50, help="最大邮件数量，默认50")
+        parser.add_argument("--output", help="将结果保存到文件")
+        
+        args = parser.parse_args()
+        
+        # 确定是否只读取未读邮件
+        read_unread_only = args.unread
+        if args.all:
+            read_unread_only = False
+        
+        # 确定时间筛选条件
+        since_datetime = None
+        if args.hours:
+            since_datetime = datetime.now() - timedelta(hours=args.hours)
+        elif args.days:
+            since_datetime = datetime.now() - timedelta(days=args.days)
+        
+        config = {
+            "folder": args.folder,
+            "read_unread_only": read_unread_only,
+            "since_datetime": since_datetime,
+            "max_emails": args.max,
+            "output": args.output
+        }
+    else:
+        # 使用交互式模式
+        config = interactive_mode()
     
     # 读取邮件
     print(f"正在读取Outlook邮件...")
-    print(f"文件夹: {args.folder}")
-    print(f"只读取未读: {read_unread_only}")
-    if since_datetime:
-        print(f"时间范围: {since_datetime} 之后")
-    print(f"最大邮件数: {args.max}")
+    print(f"文件夹: {config['folder']}")
+    print(f"只读取未读: {config['read_unread_only']}")
+    if config['since_datetime']:
+        print(f"时间范围: {config['since_datetime']} 之后")
+    print(f"最大邮件数: {config['max_emails']}")
     print("=" * 80)
     
     emails = read_outlook_emails(
-        folder_name=args.folder,
-        read_unread_only=read_unread_only,
-        since_datetime=since_datetime,
-        max_emails=args.max
+        folder_name=config['folder'],
+        read_unread_only=config['read_unread_only'],
+        since_datetime=config['since_datetime'],
+        max_emails=config['max_emails']
     )
     
     # 显示邮件信息
@@ -148,8 +254,12 @@ def main():
         print_email_info(msg)
     
     # 保存到文件
-    if args.output:
-        save_emails_to_file(emails, args.output)
+    if config['output']:
+        save_emails_to_file(emails, config['output'])
+    
+    # 程序结束时暂停
+    print("\n操作完成！")
+    input("请按回车键退出...")
 
 if __name__ == "__main__":
     main()
