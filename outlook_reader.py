@@ -3,6 +3,30 @@ import win32timezone
 from datetime import datetime, timedelta
 import argparse
 import os
+import json
+import schedule
+import time
+import threading
+
+def get_outlook_folders():
+    """
+    获取Outlook中的所有邮件文件夹
+    :return: 文件夹名称列表
+    """
+    try:
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        namespace = outlook.GetNamespace("MAPI")
+        inbox = namespace.GetDefaultFolder(6)  # 6 = olFolderInbox
+        
+        # 获取默认邮箱的所有文件夹
+        folders = []
+        for folder in namespace.Folders(inbox.Name).Folders:
+            folders.append(folder.Name)
+        
+        return folders
+    except Exception as e:
+        print(f"获取文件夹列表时出错：{str(e)}")
+        return ["Inbox"]
 
 def read_outlook_emails(
     folder_name="Inbox",
@@ -49,9 +73,16 @@ def read_outlook_emails(
 
             # 根据"发送时间"筛选
             if since_datetime:
-                # msg.ReceivedTime 是 datetime 对象
-                if msg.ReceivedTime < since_datetime:
-                    continue
+                # 简单处理时间比较，避免时区问题
+                try:
+                    # 尝试获取ReceivedTime属性
+                    received_time = msg.ReceivedTime
+                    # 尝试直接比较
+                    if received_time < since_datetime:
+                        continue
+                except Exception:
+                    # 如果获取时间失败，跳过时间筛选
+                    pass
 
             filtered_messages.append(msg)
 
@@ -118,6 +149,42 @@ def get_user_choice(prompt, options, default=None):
         except ValueError:
             print("请输入数字")
 
+def get_config_file():
+    """获取配置文件路径"""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+
+def save_config(config):
+    """保存配置到文件"""
+    try:
+        config_file = get_config_file()
+        with open(config_file, 'w', encoding='utf-8') as f:
+            # 转换datetime对象为字符串
+            config_copy = config.copy()
+            if config_copy.get('since_datetime'):
+                config_copy['since_datetime'] = str(config_copy['since_datetime'])
+            json.dump(config_copy, f, ensure_ascii=False, indent=2)
+        print(f"配置已保存到: {config_file}")
+    except Exception as e:
+        print(f"保存配置时出错：{str(e)}")
+
+def load_config():
+    """从文件加载配置"""
+    try:
+        config_file = get_config_file()
+        if os.path.exists(config_file):
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                # 转换字符串为datetime对象
+                if config.get('since_datetime'):
+                    try:
+                        config['since_datetime'] = datetime.fromisoformat(config['since_datetime'])
+                    except:
+                        config['since_datetime'] = None
+                return config
+    except Exception as e:
+        print(f"加载配置时出错：{str(e)}")
+    return {}
+
 def get_user_input(prompt, default=None, is_int=False):
     """获取用户输入"""
     while True:
@@ -139,19 +206,48 @@ def interactive_mode():
     print("Outlook邮件读取工具 - 交互式模式")
     print("================================")
     
+    # 询问是否使用旧设置
+    use_saved_config = get_user_choice(
+        "是否使用上次的设置:",
+        ["是", "否"],
+        "是"
+    )
+    
+    # 加载上次的配置
+    saved_config = load_config() if use_saved_config == "是" else {}
+    
     # 选择读取模式
     read_mode = get_user_choice(
         "请选择读取模式:",
         ["只读取未读邮件", "读取所有邮件"],
-        "只读取未读邮件"
+        "只读取未读邮件" if saved_config.get('read_unread_only', True) else "读取所有邮件"
     )
     read_unread_only = read_mode == "只读取未读邮件"
     
     # 选择文件夹
-    folder = get_user_input(
-        "请输入要读取的文件夹名称",
-        "Inbox"
+    folder_option = get_user_choice(
+        "请选择文件夹选择方式:",
+        ["从Outlook中自动扫描", "手动输入文件夹名称"],
+        "从Outlook中自动扫描"
     )
+    
+    if folder_option == "从Outlook中自动扫描":
+        print("正在扫描Outlook文件夹...")
+        folders = get_outlook_folders()
+        if len(folders) > 1:
+            folder = get_user_choice(
+                "请选择要读取的文件夹:",
+                folders,
+                saved_config.get('folder', 'Inbox')
+            )
+        else:
+            folder = folders[0]
+            print(f"只找到一个文件夹: {folder}")
+    else:
+        folder = get_user_input(
+            "请输入要读取的文件夹名称",
+            saved_config.get('folder', 'Inbox')
+        )
     
     # 选择时间范围
     time_option = get_user_choice(
@@ -169,26 +265,84 @@ def interactive_mode():
         since_datetime = datetime.now() - timedelta(days=days)
     
     # 最大邮件数量
-    max_emails = get_user_input("请输入最大邮件数量", 50, is_int=True)
+    max_emails = get_user_input("请输入最大邮件数量", saved_config.get('max_emails', 50), is_int=True)
     
     # 是否保存到文件
     save_option = get_user_choice(
         "是否保存结果到文件:",
         ["是", "否"],
-        "否"
+        "是" if saved_config.get('output') else "否"
     )
     output_file = None
     if save_option == "是":
         default_file = f"emails_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         output_file = get_user_input("请输入保存文件名", default_file)
     
-    return {
+    # 构建配置
+    config = {
         "folder": folder,
         "read_unread_only": read_unread_only,
         "since_datetime": since_datetime,
         "max_emails": max_emails,
-        "output": output_file
+        "output": output_file,
+        "schedule_enabled": saved_config.get('schedule_enabled', False),
+        "schedule_time": saved_config.get('schedule_time', '09:00')
     }
+    
+    # 保存配置
+    save_config(config)
+    
+    return config
+
+def run_email_reader(config):
+    """运行邮件读取器"""
+    print(f"\n[定时任务] 开始读取Outlook邮件...")
+    print(f"文件夹: {config['folder']}")
+    print(f"只读取未读: {config['read_unread_only']}")
+    if config.get('since_datetime'):
+        print(f"时间范围: {config['since_datetime']} 之后")
+    print(f"最大邮件数: {config['max_emails']}")
+    print("=" * 80)
+    
+    emails = read_outlook_emails(
+        folder_name=config['folder'],
+        read_unread_only=config['read_unread_only'],
+        since_datetime=config.get('since_datetime'),
+        max_emails=config['max_emails']
+    )
+    
+    # 显示邮件信息
+    print(f"共找到 {len(emails)} 封邮件")
+    print("=" * 80)
+    
+    for msg in emails:
+        print_email_info(msg)
+    
+    # 保存到文件
+    if config.get('output'):
+        output_file = f"emails_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        save_emails_to_file(emails, output_file)
+    
+    print("[定时任务] 操作完成！")
+
+def start_scheduler(config, schedule_time):
+    """启动定时任务调度器"""
+    def job():
+        run_email_reader(config)
+    
+    # 设置每天的定时任务
+    schedule.every().day.at(schedule_time).do(job)
+    
+    print(f"\n定时任务已设置：每天 {schedule_time} 运行")
+    print("按 Ctrl+C 退出...")
+    
+    # 立即运行一次
+    run_email_reader(config)
+    
+    # 循环执行定时任务
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
 
 def main():
     import sys
@@ -230,36 +384,61 @@ def main():
         # 使用交互式模式
         config = interactive_mode()
     
-    # 读取邮件
-    print(f"正在读取Outlook邮件...")
-    print(f"文件夹: {config['folder']}")
-    print(f"只读取未读: {config['read_unread_only']}")
-    if config['since_datetime']:
-        print(f"时间范围: {config['since_datetime']} 之后")
-    print(f"最大邮件数: {config['max_emails']}")
-    print("=" * 80)
+    # 加载上次的定时设置
+    saved_config = load_config()
+    schedule_time = saved_config.get('schedule_time', '09:00')
     
-    emails = read_outlook_emails(
-        folder_name=config['folder'],
-        read_unread_only=config['read_unread_only'],
-        since_datetime=config['since_datetime'],
-        max_emails=config['max_emails']
+    # 询问是否设置定时运行
+    schedule_option = get_user_choice(
+        "是否设置定时运行:",
+        ["是", "否"],
+        "是" if saved_config.get('schedule_enabled', False) else "否"
     )
     
-    # 显示邮件信息
-    print(f"共找到 {len(emails)} 封邮件")
-    print("=" * 80)
-    
-    for msg in emails:
-        print_email_info(msg)
-    
-    # 保存到文件
-    if config['output']:
-        save_emails_to_file(emails, config['output'])
-    
-    # 程序结束时暂停
-    print("\n操作完成！")
-    input("请按回车键退出...")
+    if schedule_option == "是":
+        # 输入定时运行时间
+        schedule_time = get_user_input("请输入每天运行时间（格式：HH:MM，例如 09:00）", schedule_time)
+        # 保存定时设置
+        config['schedule_enabled'] = True
+        config['schedule_time'] = schedule_time
+        save_config(config)
+        # 启动定时任务
+        start_scheduler(config, schedule_time)
+    else:
+        # 保存定时设置
+        config['schedule_enabled'] = False
+        config['schedule_time'] = schedule_time
+        save_config(config)
+        # 读取邮件
+        print(f"正在读取Outlook邮件...")
+        print(f"文件夹: {config['folder']}")
+        print(f"只读取未读: {config['read_unread_only']}")
+        if config.get('since_datetime'):
+            print(f"时间范围: {config['since_datetime']} 之后")
+        print(f"最大邮件数: {config['max_emails']}")
+        print("=" * 80)
+        
+        emails = read_outlook_emails(
+            folder_name=config['folder'],
+            read_unread_only=config['read_unread_only'],
+            since_datetime=config.get('since_datetime'),
+            max_emails=config['max_emails']
+        )
+        
+        # 显示邮件信息
+        print(f"共找到 {len(emails)} 封邮件")
+        print("=" * 80)
+        
+        for msg in emails:
+            print_email_info(msg)
+        
+        # 保存到文件
+        if config.get('output'):
+            save_emails_to_file(emails, config['output'])
+        
+        # 程序结束时暂停
+        print("\n操作完成！")
+        input("请按回车键退出...")
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,9 @@
+{
+  "folder": "Inbox",
+  "read_unread_only": false,
+  "since_datetime": null,
+  "max_emails": 50,
+  "output": "emails_20260311_170116.txt",
+  "schedule_enabled": true,
+  "schedule_time": "07:00"
+}
