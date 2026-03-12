@@ -7,6 +7,7 @@ import json
 import schedule
 import time
 import threading
+import requests
 
 def get_outlook_folders():
     """
@@ -131,6 +132,84 @@ def save_emails_to_file(emails, output_file):
     except Exception as e:
         print(f"保存文件时出错：{str(e)}")
 
+def get_access_token(corpid, corpsecret):
+    """
+    获取企业微信 access_token
+    :param corpid: 企业ID
+    :param corpsecret: 应用Secret
+    :return: access_token
+    """
+    try:
+        url = f"https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={corpid}&corpsecret={corpsecret}"
+        response = requests.get(url)
+        result = response.json()
+        if result.get('errcode') == 0:
+            return result.get('access_token')
+        else:
+            print(f"获取 access_token 失败：{result.get('errmsg')}")
+            return None
+    except Exception as e:
+        print(f"获取 access_token 时出错：{str(e)}")
+        return None
+
+def send_wechat_message(corpid, corpsecret, agentid, touser, emails):
+    """
+    发送邮件数据到企业微信
+    :param corpid: 企业ID
+    :param corpsecret: 应用Secret
+    :param agentid: 应用ID
+    :param touser: 接收人（userid列表，用|分隔）
+    :param emails: 邮件列表
+    :return: 发送结果
+    """
+    try:
+        # 获取 access_token
+        access_token = get_access_token(corpid, corpsecret)
+        if not access_token:
+            return False
+        
+        # 构建消息内容
+        if not emails:
+            content = "没有新邮件"
+        else:
+            content = f"共收到 {len(emails)} 封邮件\n\n"
+            for i, msg in enumerate(emails, 1):
+                try:
+                    sender = msg.SenderName
+                    subject = msg.Subject
+                    received_time = msg.ReceivedTime
+                    body_preview = msg.Body[:100] + "..." if len(msg.Body) > 100 else msg.Body
+                    content += f"{i}. 发件人: {sender}\n"
+                    content += f"   主题: {subject}\n"
+                    content += f"   时间: {received_time}\n"
+                    content += f"   内容: {body_preview}\n\n"
+                except Exception as e:
+                    print(f"处理邮件 {i} 时出错：{str(e)}")
+        
+        # 发送消息
+        url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={access_token}"
+        data = {
+            "touser": touser,
+            "msgtype": "text",
+            "agentid": agentid,
+            "text": {
+                "content": content
+            },
+            "safe": 0
+        }
+        
+        response = requests.post(url, json=data)
+        result = response.json()
+        if result.get('errcode') == 0:
+            print("企业微信消息发送成功")
+            return True
+        else:
+            print(f"企业微信消息发送失败：{result.get('errmsg')}")
+            return False
+    except Exception as e:
+        print(f"发送企业微信消息时出错：{str(e)}")
+        return False
+
 def get_user_choice(prompt, options, default=None):
     """获取用户选择"""
     print(prompt)
@@ -223,6 +302,7 @@ def interactive_mode():
             print(f"  时间范围: {saved_config.get('since_datetime')} 之后")
         print(f"  最大邮件数: {saved_config.get('max_emails', 50)}")
         print(f"  保存到文件: {'是' if saved_config.get('output') else '否'}")
+        print(f"  发送到企业微信: {'是' if saved_config.get('wechat_enabled', False) else '否'}")
         print(f"  定时运行: {'是' if saved_config.get('schedule_enabled', False) else '否'}")
         if saved_config.get('schedule_enabled', False):
             print(f"  运行时间: {saved_config.get('schedule_time', '09:00')}")
@@ -294,6 +374,26 @@ def interactive_mode():
             default_file = f"emails_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
             output_file = get_user_input("请输入保存文件名", default_file)
         
+        # 是否发送到企业微信
+        wechat_option = get_user_choice(
+            "是否发送结果到企业微信:",
+            ["是", "否"],
+            "否"
+        )
+        wechat_enabled = wechat_option == "是"
+        
+        # 企业微信相关配置
+        corpid = None
+        corpsecret = None
+        agentid = None
+        touser = None
+        
+        if wechat_enabled:
+            corpid = get_user_input("请输入企业微信企业ID")
+            corpsecret = get_user_input("请输入应用Secret")
+            agentid = get_user_input("请输入应用ID", is_int=True)
+            touser = get_user_input("请输入接收人（userid列表，用|分隔，如：zhangsan|lisi）")
+        
         # 构建配置
         config = {
             "folder": folder,
@@ -302,7 +402,12 @@ def interactive_mode():
             "max_emails": max_emails,
             "output": output_file,
             "schedule_enabled": False,
-            "schedule_time": "09:00"
+            "schedule_time": "09:00",
+            "wechat_enabled": wechat_enabled,
+            "corpid": corpid,
+            "corpsecret": corpsecret,
+            "agentid": agentid,
+            "touser": touser
         }
         
         # 保存配置
@@ -339,6 +444,17 @@ def run_email_reader(config):
         output_file = f"emails_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         save_emails_to_file(emails, output_file)
     
+    # 发送到企业微信
+    if config.get('wechat_enabled'):
+        corpid = config.get('corpid')
+        corpsecret = config.get('corpsecret')
+        agentid = config.get('agentid')
+        touser = config.get('touser')
+        if corpid and corpsecret and agentid and touser:
+            send_wechat_message(corpid, corpsecret, agentid, touser, emails)
+        else:
+            print("企业微信配置不完整，无法发送消息")
+    
     print("[定时任务] 操作完成！")
 
 def start_scheduler(config, schedule_time):
@@ -374,6 +490,11 @@ def main():
         parser.add_argument("--days", type=int, help="读取最近N天的邮件")
         parser.add_argument("--max", type=int, default=50, help="最大邮件数量，默认50")
         parser.add_argument("--output", help="将结果保存到文件")
+        parser.add_argument("--wechat", action="store_true", help="发送结果到企业微信")
+        parser.add_argument("--corpid", help="企业微信企业ID")
+        parser.add_argument("--corpsecret", help="企业微信应用Secret")
+        parser.add_argument("--agentid", type=int, help="企业微信应用ID")
+        parser.add_argument("--touser", help="企业微信接收人（userid列表，用|分隔）")
         
         args = parser.parse_args()
         
@@ -394,7 +515,12 @@ def main():
             "read_unread_only": read_unread_only,
             "since_datetime": since_datetime,
             "max_emails": args.max,
-            "output": args.output
+            "output": args.output,
+            "wechat_enabled": args.wechat,
+            "corpid": args.corpid,
+            "corpsecret": args.corpsecret,
+            "agentid": args.agentid,
+            "touser": args.touser
         }
     else:
         # 使用交互式模式
@@ -451,6 +577,17 @@ def main():
         # 保存到文件
         if config.get('output'):
             save_emails_to_file(emails, config['output'])
+        
+        # 发送到企业微信
+        if config.get('wechat_enabled'):
+            corpid = config.get('corpid')
+            corpsecret = config.get('corpsecret')
+            agentid = config.get('agentid')
+            touser = config.get('touser')
+            if corpid and corpsecret and agentid and touser:
+                send_wechat_message(corpid, corpsecret, agentid, touser, emails)
+            else:
+                print("企业微信配置不完整，无法发送消息")
         
         # 程序结束时暂停
         print("\n操作完成！")
