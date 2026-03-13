@@ -168,11 +168,14 @@ def send_wechat_message(corpid, corpsecret, agentid, touser, emails):
         if not access_token:
             return False
         
+        # 获取head.txt的内容
+        head_content = get_head_content()
+        
         # 构建消息内容
         if not emails:
-            content = "没有新邮件"
+            content = head_content + "\n没有新邮件"
         else:
-            content = f"共收到 {len(emails)} 封邮件\n\n"
+            content = head_content + f"\n共收到 {len(emails)} 封邮件\n\n"
             for i, msg in enumerate(emails, 1):
                 try:
                     sender = msg.SenderName
@@ -247,6 +250,17 @@ def load_wechat_config():
     except Exception as e:
         print(f"加载企业微信配置时出错：{str(e)}")
     return {}
+
+def get_head_content():
+    """获取head.txt文件的内容"""
+    try:
+        head_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "head.txt")
+        if os.path.exists(head_file):
+            with open(head_file, 'r', encoding='utf-8') as f:
+                return f.read().strip()
+    except Exception as e:
+        print(f"读取head.txt时出错：{str(e)}")
+    return ""
 
 def save_config(config):
     """保存配置到文件"""
