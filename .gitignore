@@ -49,3 +49,6 @@ ehthumbs.db
 *.tar.xz
 *.7z
 *.rar
+
+# WeChat config
+wechat_config.json

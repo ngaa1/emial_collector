@@ -232,6 +232,22 @@ def get_config_file():
     """获取配置文件路径"""
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 
+def get_wechat_config_file():
+    """获取企业微信配置文件路径"""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "wechat_config.json")
+
+def load_wechat_config():
+    """从文件加载企业微信配置"""
+    try:
+        config_file = get_wechat_config_file()
+        if os.path.exists(config_file):
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                return config
+    except Exception as e:
+        print(f"加载企业微信配置时出错：{str(e)}")
+    return {}
+
 def save_config(config):
     """保存配置到文件"""
     try:
@@ -446,10 +462,12 @@ def run_email_reader(config):
     
     # 发送到企业微信
     if config.get('wechat_enabled'):
-        corpid = config.get('corpid')
-        corpsecret = config.get('corpsecret')
-        agentid = config.get('agentid')
-        touser = config.get('touser')
+        # 优先使用独立配置文件中的参数
+        wechat_config = load_wechat_config()
+        corpid = wechat_config.get('corpid') or config.get('corpid')
+        corpsecret = wechat_config.get('corpsecret') or config.get('corpsecret')
+        agentid = wechat_config.get('agentid') or config.get('agentid')
+        touser = wechat_config.get('touser') or config.get('touser')
         if corpid and corpsecret and agentid and touser:
             send_wechat_message(corpid, corpsecret, agentid, touser, emails)
         else:
@@ -580,10 +598,12 @@ def main():
         
         # 发送到企业微信
         if config.get('wechat_enabled'):
-            corpid = config.get('corpid')
-            corpsecret = config.get('corpsecret')
-            agentid = config.get('agentid')
-            touser = config.get('touser')
+            # 优先使用独立配置文件中的参数
+            wechat_config = load_wechat_config()
+            corpid = wechat_config.get('corpid') or config.get('corpid')
+            corpsecret = wechat_config.get('corpsecret') or config.get('corpsecret')
+            agentid = wechat_config.get('agentid') or config.get('agentid')
+            touser = wechat_config.get('touser') or config.get('touser')
             if corpid and corpsecret and agentid and touser:
                 send_wechat_message(corpid, corpsecret, agentid, touser, emails)
             else:
