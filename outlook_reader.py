@@ -9,6 +9,7 @@ import time
 import threading
 from wechat_message import send_wechat_message
 from wechat_backend import send_to_wechat_backend
+from wecom_callback import send_to_wecom_callback
 
 def get_outlook_folders():
     """
@@ -330,6 +331,9 @@ def interactive_mode():
         corpsecret = None
         agentid = None
         touser = None
+        callback_url = None
+        callback_token = None
+        callback_aes_key = None
         
         if wechat_enabled:
             # 检查wechat_config.json文件是否存在且包含所有必要参数
@@ -340,12 +344,26 @@ def interactive_mode():
                 corpsecret = wechat_config['corpsecret']
                 agentid = wechat_config['agentid']
                 touser = wechat_config['touser']
+                callback_url = wechat_config.get('callback_url')
+                callback_token = wechat_config.get('callback_token')
+                callback_aes_key = wechat_config.get('callback_aes_key')
             else:
                 # 如果配置文件不存在或缺少参数，提示用户输入
                 corpid = get_user_input("请输入企业微信企业ID")
                 corpsecret = get_user_input("请输入应用Secret")
                 agentid = get_user_input("请输入应用ID", is_int=True)
                 touser = get_user_input("请输入接收人（userid列表，用|分隔，如：zhangsan|lisi）")
+            
+            # 询问是否配置企业微信接收消息服务器
+            callback_option = get_user_choice(
+                "是否配置企业微信接收消息服务器:",
+                ["是", "否"],
+                "否"
+            )
+            if callback_option == "是":
+                callback_url = get_user_input("请输入接收消息服务器URL", "https://homedesktop.tail4e1450.ts.net/wecom-app")
+                callback_token = get_user_input("请输入Token", "qs9YPTegDRmMogMPs")
+                callback_aes_key = get_user_input("请输入EncodingAESKey", "nFORbZJyaaKdUz8JVN9nLPMHNnNr4GNn2KE1JxmoDy0")
         
         # 构建配置
         config = {
@@ -360,7 +378,10 @@ def interactive_mode():
             "corpid": corpid,
             "corpsecret": corpsecret,
             "agentid": agentid,
-            "touser": touser
+            "touser": touser,
+            "callback_url": callback_url,
+            "callback_token": callback_token,
+            "callback_aes_key": callback_aes_key
         }
         
         # 保存配置
@@ -406,6 +427,9 @@ def run_email_reader(config):
         agentid = wechat_config.get('agentid') or config.get('agentid')
         touser = wechat_config.get('touser') or config.get('touser')
         backend_url = wechat_config.get('backend_url') or config.get('backend_url')
+        callback_url = wechat_config.get('callback_url') or config.get('callback_url')
+        callback_token = wechat_config.get('callback_token') or config.get('callback_token')
+        callback_aes_key = wechat_config.get('callback_aes_key') or config.get('callback_aes_key')
         
         # 发送消息给用户
         if corpid and corpsecret and agentid and touser:
@@ -418,6 +442,12 @@ def run_email_reader(config):
             send_to_wechat_backend(backend_url, emails)
         else:
             print("企业微信应用后台URL未配置，无法发送数据到后台")
+        
+        # 发送数据到企业微信接收消息服务器
+        if callback_url and callback_token and callback_aes_key:
+            send_to_wecom_callback(callback_url, callback_token, callback_aes_key, emails)
+        else:
+            print("企业微信接收消息服务器配置不完整，无法发送数据到接收服务器")
     
     print("[定时任务] 操作完成！")
 
@@ -459,6 +489,9 @@ def main():
         parser.add_argument("--corpsecret", help="企业微信应用Secret")
         parser.add_argument("--agentid", type=int, help="企业微信应用ID")
         parser.add_argument("--touser", help="企业微信接收人（userid列表，用|分隔）")
+        parser.add_argument("--callback-url", help="企业微信接收消息服务器URL")
+        parser.add_argument("--callback-token", help="企业微信接收消息服务器Token")
+        parser.add_argument("--callback-aes-key", help="企业微信接收消息服务器EncodingAESKey")
         
         args = parser.parse_args()
         
@@ -484,7 +517,10 @@ def main():
             "corpid": args.corpid,
             "corpsecret": args.corpsecret,
             "agentid": args.agentid,
-            "touser": args.touser
+            "touser": args.touser,
+            "callback_url": args.callback_url,
+            "callback_token": args.callback_token,
+            "callback_aes_key": args.callback_aes_key
         }
     else:
         # 使用交互式模式
@@ -551,6 +587,9 @@ def main():
             agentid = wechat_config.get('agentid') or config.get('agentid')
             touser = wechat_config.get('touser') or config.get('touser')
             backend_url = wechat_config.get('backend_url') or config.get('backend_url')
+            callback_url = wechat_config.get('callback_url') or config.get('callback_url')
+            callback_token = wechat_config.get('callback_token') or config.get('callback_token')
+            callback_aes_key = wechat_config.get('callback_aes_key') or config.get('callback_aes_key')
             
             # 发送消息给用户
             if corpid and corpsecret and agentid and touser:
@@ -563,6 +602,12 @@ def main():
                 send_to_wechat_backend(backend_url, emails)
             else:
                 print("企业微信应用后台URL未配置，无法发送数据到后台")
+            
+            # 发送数据到企业微信接收消息服务器
+            if callback_url and callback_token and callback_aes_key:
+                send_to_wecom_callback(callback_url, callback_token, callback_aes_key, emails)
+            else:
+                print("企业微信接收消息服务器配置不完整，无法发送数据到接收服务器")
         
         # 程序结束时暂停
         print("\n操作完成！")
