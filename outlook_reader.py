@@ -419,10 +419,20 @@ def interactive_mode():
         touser = None
         
         if wechat_enabled:
-            corpid = get_user_input("请输入企业微信企业ID")
-            corpsecret = get_user_input("请输入应用Secret")
-            agentid = get_user_input("请输入应用ID", is_int=True)
-            touser = get_user_input("请输入接收人（userid列表，用|分隔，如：zhangsan|lisi）")
+            # 检查wechat_config.json文件是否存在且包含所有必要参数
+            wechat_config = load_wechat_config()
+            if wechat_config and all(key in wechat_config for key in ['corpid', 'corpsecret', 'agentid', 'touser']):
+                print("已从 wechat_config.json 加载企业微信配置")
+                corpid = wechat_config['corpid']
+                corpsecret = wechat_config['corpsecret']
+                agentid = wechat_config['agentid']
+                touser = wechat_config['touser']
+            else:
+                # 如果配置文件不存在或缺少参数，提示用户输入
+                corpid = get_user_input("请输入企业微信企业ID")
+                corpsecret = get_user_input("请输入应用Secret")
+                agentid = get_user_input("请输入应用ID", is_int=True)
+                touser = get_user_input("请输入接收人（userid列表，用|分隔，如：zhangsan|lisi）")
         
         # 构建配置
         config = {

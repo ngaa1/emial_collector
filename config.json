@@ -1,9 +1,14 @@
 {
   "folder": "Inbox",
   "read_unread_only": false,
-  "since_datetime": null,
+  "since_datetime": "2026-03-15 09:22:59.263291",
   "max_emails": 5,
-  "output": "emails_data.txt",
-  "schedule_enabled": true,
-  "schedule_time": "07:00"
+  "output": "emails_20260316_092302.txt",
+  "schedule_enabled": false,
+  "schedule_time": "09:00",
+  "wechat_enabled": true,
+  "corpid": "wwe76dbb18c59c8946",
+  "corpsecret": "9ux3Za9eZLnl3jiSsNVumuB1PMNk2HtjX6Ct9KkykCw",
+  "agentid": 1000002,
+  "touser": "LiChuLong"
 }
