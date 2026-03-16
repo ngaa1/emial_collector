@@ -31,13 +31,17 @@ def send_to_wecom_callback(callback_url, token, encoding_aes_key, emails):
         data = {
             "email_count": len(emails),
             "emails": email_data,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # 构建查询参数
+        params = {
             "token": token,
             "encoding_aes_key": encoding_aes_key
         }
         
-        # 发送POST请求
-        response = requests.post(callback_url, json=data, headers={"Content-Type": "application/json"})
+        # 发送POST请求，将参数放在查询字符串中
+        response = requests.post(callback_url, json=data, params=params, headers={"Content-Type": "application/json"})
         
         if response.status_code == 200:
             print("邮件数据发送到企业微信接收消息服务器成功")
