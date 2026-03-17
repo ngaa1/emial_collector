@@ -445,7 +445,7 @@ def run_email_reader(config):
         
         # 发送数据到企业微信接收消息服务器
         if callback_url and callback_token and callback_aes_key:
-            send_to_wecom_callback(callback_url, callback_token, callback_aes_key, emails)
+            send_to_wecom_callback(callback_url, callback_token, callback_aes_key, emails, corpid)
         else:
             print("企业微信接收消息服务器配置不完整，无法发送数据到接收服务器")
     
@@ -605,7 +605,7 @@ def main():
             
             # 发送数据到企业微信接收消息服务器
             if callback_url and callback_token and callback_aes_key:
-                send_to_wecom_callback(callback_url, callback_token, callback_aes_key, emails)
+                send_to_wecom_callback(callback_url, callback_token, callback_aes_key, emails, corpid)
             else:
                 print("企业微信接收消息服务器配置不完整，无法发送数据到接收服务器")
         

@@ -5,7 +5,7 @@
   "max_emails": 5,
   "output": "emails_20260316_092302.txt",
   "schedule_enabled": true,
-  "schedule_time": "09:00",
+  "schedule_time": "07:00",
   "wechat_enabled": true,
   "corpid": "wwe76dbb18c59c8946",
   "corpsecret": "9ux3Za9eZLnl3jiSsNVumuB1PMNk2HtjX6Ct9KkykCw",
